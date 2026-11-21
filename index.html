@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="사고 과정과 독립 수행을 기록하고 평가하는 학습 도구">
+  <title>Think Before AI</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./assignment.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+<header class="top"><div class="wrap bar">
+  <a class="brand" href="./"><span class="mark" aria-hidden="true">T</span> Think Before AI</a>
+  <div class="tabs" role="tablist" aria-label="사용자 화면">
+    <button id="student-tab" role="tab" aria-controls="student" aria-selected="true">학생용</button>
+    <button id="teacher-tab" role="tab" aria-controls="teacher" aria-selected="false" tabindex="-1">교수자용</button>
+  </div>
+</div></header>
+<main class="wrap">
+  <section id="student" role="tabpanel" aria-labelledby="student-tab">
+    <div class="hero">
+      <p class="eyebrow">사고 과정 실습</p>
+      <h1>생각을 기록하고, 다시 검토하기</h1>
+      <p>먼저 스스로 판단하고, 힌트와 모범 답변을 검토한 뒤 새로운 문제를 해결합니다.</p>
+    </div>
+    <div class="layout">
+      <aside class="card progress">
+        <h2>학습 진행</h2>
+        <p id="progress-label" aria-live="polite"></p>
+        <progress id="meter" max="4" value="0" aria-label="완료한 학습 단계"></progress>
+        <ol id="steps"></ol>
+      </aside>
+      <div id="activity"></div>
+    </div>
+  </section>
+  <section id="teacher" role="tabpanel" aria-labelledby="teacher-tab" hidden>
+    <div class="hero">
+      <p class="eyebrow">교수자 평가</p>
+      <h1>사고 과정과 독립 수행 평가</h1>
+      <p>학생의 기록을 근거로 수준을 선택하고 피드백을 작성하세요.</p>
+    </div>
+    <div class="card no-print">
+      <h2>학생 기록 불러오기</h2>
+      <label for="upload">학생 제출 JSON 파일 (최대 1 MiB)</label>
+      <input id="upload" type="file" accept=".json,application/json" aria-describedby="import-status">
+      <p id="import-status" role="status"></p>
+    </div>
+    <div id="assessment"></div>
+  </section>
+</main>
+<footer class="wrap">Think Before AI · 학생 기록은 이 브라우저에서 처리됩니다.</footer>
+</body>
+</html>
