@@ -175,6 +175,9 @@ function renderStudent(focus = false) {
     add($("steps"), "li", name + " · " + state, i === step && step < 6 ? { "aria-current": "step" } : {});
   });
 
+  const example = exampleProblems.find(item => item.id === problem.id && item.version === problem.version);
+  $("student-example").value = example?.id ?? "";
+  $("load-example").disabled = !example;
   const activity = $("activity");
   activity.replaceChildren();
   const card = add(activity, "article", undefined, { class: "card" });
@@ -207,8 +210,12 @@ function renderStudent(focus = false) {
     if (step === 3) {
       problem.hints.forEach((hint, i) => callout(card, "힌트 " + (i + 1), hint));
       add(card, "p", "타당한 근거가 있다면 최초 판단을 유지할 수 있습니다.");
+      if (problem.revisionQuestion) callout(card, "사고 수정 질문", problem.revisionQuestion);
     }
-    if (step === 4) callout(card, "모범 답변", problem.model);
+    if (step === 4) {
+      callout(card, "모범 답변", problem.model);
+      if (problem.comparisonQuestion) callout(card, "모범 답변 비교 질문", problem.comparisonQuestion);
+    }
     if (step === 5) {
       callout(card, problem.independentTitle, problem.independent);
       add(card, "p", "이 단계에서는 힌트와 모범 답변을 제공하지 않습니다. 외부 AI 사용을 기술적으로 완전히 차단할 수 없습니다. 자신의 판단과 근거를 직접 작성하세요.");
@@ -384,7 +391,9 @@ function renderAssessment(data, root) {
   callout(all, "최초 문제", problem.problem);
   callout(all, "학습목표", problem.objectives);
   problem.hints.forEach((hint, i) => callout(all, "힌트 " + (i + 1), hint));
+  if (problem.revisionQuestion) callout(all, "사고 수정 질문", problem.revisionQuestion);
   callout(all, "모범 답변", problem.model);
+  if (problem.comparisonQuestion) callout(all, "모범 답변 비교 질문", problem.comparisonQuestion);
   callout(all, "독립 수행 문제 (힌트 미제공)", problem.independent);
   recordDetails(all, data.records);
   const researchRecords = add(overview, "button", "연구·발표용 학생 기록 JSON 다운로드", { type: "button", class: "secondary" });
