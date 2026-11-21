@@ -21,6 +21,14 @@ const defaultProblem = {
   rubric: rubric.map(({ id, name, max, levels }) => ({ id, name, max, levels }))
 };
 
+const exampleProblems = exampleProblemContent.map(content => ({
+  ...content, studentNumber: defaultProblem.studentNumber, rubric: defaultProblem.rubric
+}));
+const optionalProblemFields = [
+  ["revisionQuestion", "사고 수정 질문 (선택)", true],
+  ["comparisonQuestion", "모범 답변 비교 질문 (선택)", true]
+];
+
 const problemFields = [
   ["id", "문제 ID (영문·숫자·밑줄·하이픈)"], ["title", "문제 제목"],
   ["subject", "교과목 또는 학습 영역"], ["objectives", "학습목표", true],
@@ -49,7 +57,9 @@ function problemText(value, limit = 4000) {
 
 function validateProblem(data) {
   const keys = [...problemFields.map(([key]) => key), "version", "hints", "studentNumber", "rubric"];
-  if (!exactObject(data, keys) || !problemFields.every(([key]) => problemText(data[key])) ||
+  const optionalKeys = optionalProblemFields.map(([key]) => key).filter(key => data && Object.hasOwn(data, key));
+  if (!exactObject(data, [...keys, ...optionalKeys]) || !problemFields.every(([key]) => problemText(data[key])) ||
+      !optionalKeys.every(key => problemText(data[key])) ||
       !/^[A-Za-z0-9_-]{1,60}$/.test(data.id) || !Number.isSafeInteger(data.version) || data.version < 1) {
     throw new Error("문제 ID, 버전과 필수 입력을 확인하세요. 각 항목은 최대 4,000자입니다.");
   }
@@ -83,7 +93,7 @@ function validateProblem(data) {
 }
 
 function draftState() {
-  return { problem: defaultProblem, studentNumber: "", records: [], draft: {}, started: false, hintsSeen: 0, writingRevision: false };
+  return { problem: exampleProblems[0], studentNumber: "", records: [], draft: {}, started: false, hintsSeen: 0, writingRevision: false };
 }
 
 let session;
@@ -95,10 +105,11 @@ function saveStudent() {
 
 function replaceStudent(problem) {
   if ((session.started || session.records.length || Object.keys(session.draft).length) &&
-      !window.confirm("현재 학습 기록과 임시 입력을 이 브라우저에서 지우고 새로 시작할까요?")) return;
+      !window.confirm("현재 학습 기록과 임시 입력을 이 브라우저에서 지우고 새로 시작할까요?")) return false;
   session = { ...draftState(), problem };
   saveStudent();
   renderStudent(true);
+  return true;
 }
 
 async function importProblemFile(event, status, apply) {
@@ -132,6 +143,16 @@ function initStudentPage() {
     }
   } catch { /* A damaged local draft must not block starting a new session. */ }
 
+  const examples = $("student-example");
+  exampleProblems.forEach(problem => add(examples, "option", problem.title, { value: problem.id }));
+  examples.onchange = () => { $("load-example").disabled = !examples.value; };
+  $("load-example").onclick = () => {
+    const problem = exampleProblems.find(item => item.id === examples.value);
+    if (problem && !replaceStudent(problem)) {
+      examples.value = exampleProblems.find(item => item.id === session.problem.id && item.version === session.problem.version)?.id ?? "";
+      examples.onchange();
+    }
+  };
   $("student-problem-file").onchange = event => importProblemFile(event, $("student-file-status"), replaceStudent);
 
   $("clear-student").onclick = () => {
@@ -154,7 +175,21 @@ function sameProblem(left, right) {
 }
 
 function initTeacherPage() {
-  let catalog = readLocal(problemKey, null) ?? { problems: [defaultProblem], versions: { [defaultProblem.id]: 1 } };
+  const savedCatalog = readLocal(problemKey, null);
+  let catalog = savedCatalog ?? { problems: [], versions: {} };
+  // A saved version also marks deliberately deleted problems.
+  const stock = catalog.problems.find(problem => problem.id === defaultProblem.id);
+  if (stock && sameProblem(stock, defaultProblem)) {
+    catalog.problems = catalog.problems.map(problem => problem === stock ? exampleProblems[0] : problem);
+    catalog.versions[stock.id] = exampleProblems[0].version;
+  }
+  for (const problem of exampleProblems) {
+    if (!Object.hasOwn(catalog.versions, problem.id)) {
+      catalog.problems.push(problem);
+      catalog.versions[problem.id] = problem.version;
+    }
+  }
+  writeLocal(problemKey, catalog);
   let editing = null;
   let editorRubric = [];
   const problemStatus = $("problem-status");
@@ -210,7 +245,7 @@ function initTeacherPage() {
     editing = id;
     const editor = $("problem-fields");
     editor.replaceChildren();
-    problemFields.forEach(([key, label, multi]) => {
+    [...problemFields, ...optionalProblemFields].forEach(([key, label, multi]) => {
       const input = field(editor, "problem-" + key, label, multi ? { maxlength: 4000 } : { maxlength: 4000, type: "text" }, multi ? "textarea" : "input");
       input.value = problem[key] ?? "";
       if (key === "id") input.readOnly = id !== null;
@@ -231,6 +266,10 @@ function initTeacherPage() {
 
   function readProblemEditor() {
     const data = Object.fromEntries(problemFields.map(([key]) => [key, $("problem-" + key).value.trim()]));
+    for (const [key] of optionalProblemFields) {
+      const value = $("problem-" + key).value.trim();
+      if (value) data[key] = value;
+    }
     const previous = Object.hasOwn(catalog.versions, data.id) ? catalog.versions[data.id] : 0;
     data.version = editing ? previous + 1 : Math.max(previous + 1, Number($("problem-version").value));
     data.hints = [...$("hint-editor").querySelectorAll("textarea")].map(input => input.value.trim());
@@ -329,8 +368,9 @@ function initTeacherPage() {
     for (const [label, value] of [
       ["교과목", problem.subject], ["학습목표", problem.objectives], ["학습 문제", problem.problem],
       ["사전 사고 입력 안내", problem.guidance], ...problem.hints.map((hint, i) => ["힌트 " + (i + 1), hint]),
-      ["모범 답변", problem.model], [problem.independentTitle, problem.independent], ["독립 수행 채점 기준", problem.independentCriteria]
-    ]) callout(preview, label, value);
+      ["모범 답변", problem.model], [problem.independentTitle, problem.independent], ["독립 수행 채점 기준", problem.independentCriteria],
+      ["사고 수정 질문", problem.revisionQuestion], ["모범 답변 비교 질문", problem.comparisonQuestion]
+    ]) { if (value) callout(preview, label, value); }
     const areas = add(preview, "ul");
     problem.rubric.forEach(area => {
       const item = add(areas, "li");
