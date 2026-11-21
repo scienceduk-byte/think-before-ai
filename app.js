@@ -599,74 +599,54 @@ function selectImport(id) {
   renderImportList();
 }
 
-$("student-search").oninput = renderImportList;
-$("student-record").onchange = event => selectImport(event.target.value);
+function initTeacherAssessment() {
+  $("student-search").oninput = renderImportList;
+  $("student-record").onchange = event => selectImport(event.target.value);
 
-$("upload").onchange = async event => {
-  const files = Array.from(event.target.files);
-  if (!files.length) return;
-  const attempt = ++importAttempt;
-  const status = $("import-status");
-  status.classList.remove("error");
-  status.textContent = "파일을 확인하는 중입니다.";
-  event.target.value = "";
-  const errors = [];
-  const newEntries = new Map();
-  let duplicates = 0;
-  let lastId = "";
-  for (const [index, file] of files.entries()) {
-    try {
-      if (file.size === 0 || file.size > maxFile) throw new Error("비어 있거나 1 MiB를 초과한 파일입니다.");
-      const contents = await file.text();
-      if (attempt !== importAttempt) return;
-      let data;
-      try { data = JSON.parse(contents.replace(/^\uFEFF/, "")); }
-      catch { throw new Error("JSON 문법을 읽을 수 없습니다."); }
-      validateSubmission(data);
-      const signature = JSON.stringify(data);
-      if (newEntries.has(signature) || [...imported.values()].some(entry => entry.signature === signature)) {
-        duplicates++;
-        continue;
+  $("upload").onchange = async event => {
+    const files = Array.from(event.target.files);
+    if (!files.length) return;
+    const attempt = ++importAttempt;
+    const status = $("import-status");
+    status.classList.remove("error");
+    status.textContent = "파일을 확인하는 중입니다.";
+    event.target.value = "";
+    const errors = [];
+    const newEntries = new Map();
+    let duplicates = 0;
+    let lastId = "";
+    for (const [index, file] of files.entries()) {
+      try {
+        if (file.size === 0 || file.size > maxFile) throw new Error("비어 있거나 1 MiB를 초과한 파일입니다.");
+        const contents = await file.text();
+        if (attempt !== importAttempt) return;
+        let data;
+        try { data = JSON.parse(contents.replace(/^\uFEFF/, "")); }
+        catch { throw new Error("JSON 문법을 읽을 수 없습니다."); }
+        validateSubmission(data);
+        const signature = JSON.stringify(data);
+        if (newEntries.has(signature) || [...imported.values()].some(entry => entry.signature === signature)) {
+          duplicates++;
+          continue;
+        }
+        newEntries.set(signature, data);
+      } catch (error) {
+        if (attempt !== importAttempt) return;
+        errors.push((index + 1) + "번째 파일: " + error.message);
       }
-      newEntries.set(signature, data);
-    } catch (error) {
-      if (attempt !== importAttempt) return;
-      errors.push((index + 1) + "번째 파일: " + error.message);
     }
-  }
-  for (const [signature, data] of newEntries) {
-    lastId = String(imported.size + 1);
-    imported.set(lastId, { data, signature });
-  }
-  const added = newEntries.size;
-  $("record-browser").hidden = imported.size === 0;
-  if (added) {
-    $("student-search").value = "";
-    selectImport(lastId);
-  }
-  const report = added + "개 기록을 불러왔습니다. 중복 " + duplicates + "개.";
-  status.classList.toggle("error", errors.length > 0);
-  status.textContent = errors.length ? report + " 평가 불가 — " + errors.join(" ") : report;
-};
-
-
-const tabs = [$("student-tab"), $("teacher-tab")];
-function selectTab(active) {
-  for (const tab of tabs) {
-    const selected = tab === active;
-    tab.setAttribute("aria-selected", String(selected));
-    tab.tabIndex = selected ? 0 : -1;
-    $(tab.getAttribute("aria-controls")).hidden = !selected;
-  }
-}
-tabs.forEach((tab, index) => {
-  tab.onclick = () => selectTab(tab);
-  tab.onkeydown = event => {
-    const destinations = { ArrowLeft: 1 - index, ArrowRight: 1 - index, Home: 0, End: 1 };
-    if (!Object.hasOwn(destinations, event.key)) return;
-    event.preventDefault();
-    const next = tabs[destinations[event.key]];
-    selectTab(next);
-    next.focus();
+    for (const [signature, data] of newEntries) {
+      lastId = String(imported.size + 1);
+      imported.set(lastId, { data, signature });
+    }
+    const added = newEntries.size;
+    $("record-browser").hidden = imported.size === 0;
+    if (added) {
+      $("student-search").value = "";
+      selectImport(lastId);
+    }
+    const report = added + "개 기록을 불러왔습니다. 중복 " + duplicates + "개.";
+    status.classList.toggle("error", errors.length > 0);
+    status.textContent = errors.length ? report + " 평가 불가 — " + errors.join(" ") : report;
   };
-});
+}
