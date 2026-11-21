@@ -60,9 +60,14 @@ const statusLabels = {
 const $ = id => document.getElementById(id);
 const maxText = 12000;
 const maxFile = 1024 * 1024;
-const schemaVersion = 1;
-const session = { studentCode: "", records: [] };
+const submissionVersion = 2;
+const session = { studentNumber: "", records: [] };
+const imported = new Map();
+let selectedImport = "";
 let importAttempt = 0;
+const studentNumberPattern = new RegExp("^(?:" + assignment.studentNumber.pattern + ")$");
+const personalFileNotice = "학번과 답변 또는 평가를 담은 개인정보 파일입니다. 지정된 제출 경로로만 전달하고 공개 저장소나 발표 자료에 올리지 마세요.";
+const researchFileNotice = "연구·발표용 파일은 학번과 기록 시각을 제외합니다. 원문과 메모에 이름이나 다른 식별 정보가 있는지 공유 전에 확인하세요.";
 
 function add(parent, tag, text, options = {}) {
   const node = document.createElement(tag);
@@ -99,8 +104,46 @@ function recordDetails(parent, records) {
   });
 }
 
-function validCode(code) {
+function validLegacyCode(code) {
   return typeof code === "string" && /^[A-Za-z0-9_-]{4,32}$/.test(code);
+}
+
+function validStudentNumber(value) {
+  return typeof value === "string" && value.length > 0 &&
+    value.length <= assignment.studentNumber.maxLength && value === value.trim() &&
+    studentNumberPattern.test(value);
+}
+
+function identityLabel(data) {
+  return data.studentNumber !== undefined ? "학번 " + data.studentNumber : "기존 식별코드 " + data.studentCode;
+}
+
+function researchExport(data) {
+  const { studentNumber, studentCode, evaluatedAt, records, type, ...content } = data;
+  const identity = studentNumber ?? studentCode;
+  const research = { ...content, type: type + "-research" };
+  if (records) research.records = records.map(({ answers }) => ({ answers }));
+  return JSON.parse(JSON.stringify(research, (key, value) => {
+    if (identity && typeof value === "string" && (
+      Object.hasOwn(stages[0].fields, key) || Object.hasOwn(stages[1].fields, key) ||
+      Object.hasOwn(stages[2].fields, key) || Object.hasOwn(stages[3].fields, key) ||
+      key === "note" || key === "feedback"
+    )) return value.replaceAll(identity, "[식별 정보 삭제]");
+    return value;
+  }));
+}
+
+function studentDownloads(card, partial) {
+  add(card, "p", personalFileNotice);
+  add(card, "p", researchFileNotice);
+  const actions = add(card, "div", undefined, { class: "actions" });
+  const stem = "think-before-ai-submission" + (partial ? "-partial" : "");
+  add(actions, "button", partial ? "현재까지 제출한 기록 JSON 다운로드" : "학생 기록 JSON 다운로드", { type: "button" }).onclick = () => {
+    download(submission(), stem + ".json");
+  };
+  add(actions, "button", "연구·발표용 JSON 다운로드", { type: "button", class: "secondary" }).onclick = () => {
+    download(researchExport(submission()), stem + "-research.json");
+  };
 }
 
 function validAnswer(answer) {
@@ -116,7 +159,7 @@ function download(data, filename, type = "application/json") {
 }
 
 function submission() {
-  return { type: "think-before-ai-submission", schemaVersion, assignmentId: assignment.id, ...session };
+  return { type: "think-before-ai-submission", schemaVersion: submissionVersion, assignmentId: assignment.id, ...session };
 }
 
 function renderStudent(focus = false) {
@@ -135,9 +178,7 @@ function renderStudent(focus = false) {
   const heading = add(card, "h2", stages[index]?.name ?? "학습 기록 제출 완료", { tabindex: "-1" });
   if (index === stages.length) {
     add(card, "p", "JSON 파일을 내려받아 담당 교수자에게 전달하세요.");
-    add(card, "button", "학생 기록 JSON 다운로드").onclick = () => {
-      download(submission(), "think-before-ai-" + session.studentCode + ".json");
-    };
+    studentDownloads(card, false);
     recordDetails(add(activity, "section", undefined, { class: "card" }), session.records);
   } else {
     if (index < 3) callout(card, assignment.title, assignment.problem);
@@ -151,10 +192,11 @@ function renderStudent(focus = false) {
     const form = add(card, "form");
     form.noValidate = true;
     if (index === 0) {
-      field(form, "studentCode", "임의 식별코드", {
-        type: "text", required: "", maxlength: "32", autocomplete: "off", "aria-describedby": "code-help"
+      field(form, "studentNumber", "학번 (필수)", {
+        type: "text", required: "", maxlength: assignment.studentNumber.maxLength, autocomplete: "off",
+        inputmode: assignment.studentNumber.inputMode, "aria-describedby": "number-help"
       }, "input");
-      add(form, "p", "실명 대신 영문, 숫자, 하이픈 또는 밑줄로 된 4~32자의 임의 코드를 사용하세요.", { id: "code-help" });
+      add(form, "p", assignment.studentNumber.help + " 학번은 학습·평가 기록에 연결되며 브라우저에서 처리됩니다. 이름과 연락처는 입력하지 마세요.", { id: "number-help" });
     }
     const entries = Object.entries(stages[index].fields);
     for (const [key, label] of entries) field(form, key, label, { required: "" });
@@ -164,15 +206,15 @@ function renderStudent(focus = false) {
     form.onsubmit = event => {
       event.preventDefault();
       if (session.records.length !== index) return;
-      const code = index === 0 ? form.elements.studentCode.value.trim() : session.studentCode;
+      const number = index === 0 ? form.elements.studentNumber.value.trim() : session.studentNumber;
       const answers = Object.fromEntries(entries.map(([key]) => [key, form.elements[key].value]));
-      const invalidCode = !validCode(code);
+      const invalidNumber = !validStudentNumber(number);
       const missing = entries.find(([key]) => !validAnswer(answers[key]));
-      if (invalidCode || missing) {
-        const input = form.elements[invalidCode ? "studentCode" : missing[0]];
-        error.textContent = invalidCode ? "식별코드 형식을 확인하세요. 허용된 문자로 4~32자를 입력해 주세요." : missing[1] + " (내용을 입력해 주세요.)";
+      if (invalidNumber || missing) {
+        const input = form.elements[invalidNumber ? "studentNumber" : missing[0]];
+        error.textContent = invalidNumber ? "학번을 확인해 주세요. " + assignment.studentNumber.help : missing[1] + " (내용을 입력해 주세요.)";
         input.setAttribute("aria-invalid", "true");
-        const description = input.id === "studentCode" ? "code-help" : "";
+        const description = input.id === "studentNumber" ? "number-help" : "";
         input.setAttribute("aria-describedby", [description, "student-error"].filter(Boolean).join(" "));
         input.addEventListener("input", () => {
           input.removeAttribute("aria-invalid");
@@ -183,15 +225,11 @@ function renderStudent(focus = false) {
         input.focus();
         return;
       }
-      session.studentCode = code;
+      session.studentNumber = number;
       session.records.push(Object.freeze({ submittedAt: new Date().toISOString(), answers: Object.freeze(answers) }));
       renderStudent(true);
     };
-    if (index > 0) {
-      add(card, "button", "현재까지 제출한 기록 JSON 다운로드", { type: "button", class: "secondary" }).onclick = () => {
-        download(submission(), "think-before-ai-" + session.studentCode + "-partial.json");
-      };
-    }
+    if (index > 0) studentDownloads(card, true);
     if (index === 1 || index === 2) {
       const prior = add(activity, "section", undefined, { class: "card" });
       add(prior, "h2", "제출한 내 기록");
@@ -213,9 +251,11 @@ function validDate(value) {
 }
 
 function validateSubmission(data) {
-  if (!exactObject(data, ["type", "schemaVersion", "assignmentId", "studentCode", "records"]) ||
-      data.type !== "think-before-ai-submission" || data.schemaVersion !== schemaVersion ||
-      !validCode(data.studentCode) || typeof data.assignmentId !== "string" ||
+  const legacy = data?.schemaVersion === 1;
+  const identityKey = legacy ? "studentCode" : "studentNumber";
+  if (!exactObject(data, ["type", "schemaVersion", "assignmentId", identityKey, "records"]) ||
+      data.type !== "think-before-ai-submission" || (!legacy && data.schemaVersion !== submissionVersion) ||
+      !(legacy ? validLegacyCode(data.studentCode) : validStudentNumber(data.studentNumber)) || typeof data.assignmentId !== "string" ||
       !Array.isArray(data.records) || data.records.length < 1 || data.records.length > stages.length) {
     throw new Error("학생 제출 파일 형식이 올바르지 않습니다. 학생 화면에서 받은 JSON 파일을 선택하세요.");
   }
@@ -242,12 +282,12 @@ function csvCell(value) {
 
 function evaluationCsv(result) {
   const rows = [[
-    "과제 ID", "학생 코드", "평가 시각", "영역", "배점", "상태", "수준", "점수",
+    "과제 ID", "학번", "기존 식별코드", "평가 시각", "영역", "배점", "상태", "수준", "점수",
     "기술문", "평가 근거 메모", "평가한 영역 합계", "최종 총점", "종합 피드백"
   ]];
   for (const criterion of result.criteria) {
     rows.push([
-      result.assignmentId, result.studentCode, result.evaluatedAt, criterion.id + ". " + criterion.name,
+      result.assignmentId, result.studentNumber, result.studentCode, result.evaluatedAt, criterion.id + ". " + criterion.name,
       criterion.max, statusLabels[criterion.status], criterion.level,
       criterion.score === null ? "" : scoreText(criterion.score), criterion.description, criterion.note,
       scoreText(result.subtotal), result.total === null ? "" : scoreText(result.total), result.feedback
@@ -256,10 +296,9 @@ function evaluationCsv(result) {
   return "\uFEFF" + rows.map(row => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
 
-function renderAssessment(data) {
-  const root = $("assessment");
+function renderAssessment(data, root) {
   const overview = add(root, "section", undefined, { class: "card no-print" });
-  add(overview, "h2", assignment.title + " · 학생 " + data.studentCode);
+  add(overview, "h2", assignment.title + " · " + identityLabel(data));
   const all = add(overview, "details");
   add(all, "summary", "전체 문제와 제출 기록");
   callout(all, "최초 문제", assignment.problem);
@@ -267,6 +306,8 @@ function renderAssessment(data) {
   callout(all, "모범 답변", assignment.model);
   callout(all, "독립 수행 문제 (힌트 미제공)", assignment.independent);
   recordDetails(all, data.records);
+  const researchRecords = add(overview, "button", "연구·발표용 학생 기록 JSON 다운로드", { type: "button", class: "secondary" });
+  researchRecords.onclick = () => download(researchExport(data), "think-before-ai-submission-research.json");
 
   const form = add(root, "form", undefined, { class: "card no-print" });
   add(form, "h2", "4수준 분석적 루브릭");
@@ -323,8 +364,11 @@ function renderAssessment(data) {
 
   const total = add(form, "p", "", { class: "assessment-total", role: "status" });
   const feedback = field(form, "feedback", "종합 피드백 (선택)");
+  add(form, "p", personalFileNotice);
+  add(form, "p", researchFileNotice);
   const actions = add(form, "div", undefined, { class: "actions" });
   const json = add(actions, "button", "평가 결과 JSON 다운로드", { type: "button" });
+  const research = add(actions, "button", "연구·발표용 JSON 다운로드", { type: "button", class: "secondary" });
   const csv = add(actions, "button", "평가 결과 CSV 다운로드", { type: "button" });
   const print = add(actions, "button", "인쇄용 화면 열기", { type: "button" });
 
@@ -341,8 +385,8 @@ function renderAssessment(data) {
     const subtotal = criteria.reduce((sum, criterion) => sum + (criterion.score ?? 0), 0);
     const finalized = criteria.every(criterion => criterion.status === "scored");
     return {
-      type: "think-before-ai-evaluation", schemaVersion: 2, assignmentId: data.assignmentId,
-      studentCode: data.studentCode, evaluatedAt: new Date().toISOString(),
+      type: "think-before-ai-evaluation", schemaVersion: 3, assignmentId: data.assignmentId,
+      ...(data.studentNumber === undefined ? { studentCode: data.studentCode } : { studentNumber: data.studentNumber }), evaluatedAt: new Date().toISOString(),
       criteria, subtotal, finalized, total: finalized ? subtotal : null, feedback: feedback.value
     };
   }
@@ -358,10 +402,11 @@ function renderAssessment(data) {
       ? "최종 총점 " + scoreText(result.total) + " / 100.00점"
       : scored + " / 4개 영역 평가 완료 · 평가한 영역 합계 " + scoreText(result.subtotal) + "점 · 최종 총점 미확정";
   }
-  const filename = "think-before-ai-evaluation-" + data.studentCode;
+  const filename = "think-before-ai-evaluation";
   form.onsubmit = event => event.preventDefault();
   controls.forEach(({ select }) => { select.onchange = updateScore; });
   json.onclick = () => download(evaluate(), filename + ".json");
+  research.onclick = () => download(researchExport(evaluate()), filename + "-research.json");
   csv.onclick = () => download(evaluationCsv(evaluate()), filename + ".csv", "text/csv;charset=utf-8");
   print.onclick = () => showPrint(evaluate(), print);
   updateScore();
@@ -370,7 +415,8 @@ function renderAssessment(data) {
 function showPrint(result, trigger) {
   const report = add(document.body, "section", undefined, { id: "print-report", class: "wrap card", role: "dialog", "aria-modal": "true", "aria-labelledby": "print-title" });
   add(report, "h1", "Think Before AI · 평가 결과", { id: "print-title" });
-  add(report, "p", assignment.title + " · 학생 " + result.studentCode + " · " + formatDate(result.evaluatedAt));
+  add(report, "p", assignment.title + " · " + identityLabel(result) + " · " + formatDate(result.evaluatedAt));
+  add(report, "p", personalFileNotice);
   add(report, "h2", result.finalized
     ? "최종 총점 " + scoreText(result.total) + " / 100.00점"
     : "최종 총점 미확정 · 평가한 영역 합계 " + scoreText(result.subtotal) + "점");
@@ -409,34 +455,85 @@ function showPrint(result, trigger) {
   print.focus();
 }
 
+function renderImportList() {
+  const query = $("student-search").value.trim().toLowerCase();
+  const picker = $("student-record");
+  picker.replaceChildren();
+  add(picker, "option", "기록 선택", { value: "" });
+  let matches = 0;
+  for (const [id, { data }] of imported) {
+    const identity = data.studentNumber ?? data.studentCode;
+    if (!identity.toLowerCase().includes(query)) continue;
+    matches++;
+    const last = data.records.at(-1);
+    add(picker, "option", "#" + id + " · " + identityLabel(data) + " · " + data.records.length + "/4단계 · " + formatDate(last.submittedAt), { value: id });
+  }
+  picker.value = [...picker.options].some(option => option.value === selectedImport) ? selectedImport : "";
+  $("search-status").textContent = matches + " / " + imported.size + "개 기록";
+  const active = imported.get(picker.value)?.panel;
+  if ($("assessment").firstElementChild !== active) $("assessment").replaceChildren(...(active ? [active] : []));
+}
+
+function selectImport(id) {
+  selectedImport = id;
+  const entry = imported.get(id);
+  if (entry && !entry.panel) {
+    entry.panel = document.createElement("div");
+    renderAssessment(entry.data, entry.panel);
+  }
+  renderImportList();
+}
+
+$("student-search").oninput = renderImportList;
+$("student-record").onchange = event => selectImport(event.target.value);
+
 $("upload").onchange = async event => {
-  const file = event.target.files[0];
+  const files = Array.from(event.target.files);
+  if (!files.length) return;
   const attempt = ++importAttempt;
   const status = $("import-status");
-  $("assessment").replaceChildren();
-  status.textContent = "";
   status.classList.remove("error");
-  if (!file) return;
-  try {
-    if (file.size === 0 || file.size > maxFile) throw new Error("비어 있거나 1 MiB를 초과한 파일입니다.");
-    status.textContent = "파일을 확인하는 중입니다.";
-    const contents = await file.text();
-    if (attempt !== importAttempt) return;
-    let data;
-    try { data = JSON.parse(contents.replace(/^\uFEFF/, "")); }
-    catch { throw new Error("JSON 문법을 읽을 수 없습니다. 학생이 내려받은 파일을 확인하세요."); }
-    validateSubmission(data);
-    renderAssessment(data);
-    status.textContent = "학생 " + data.studentCode + "의 기록을 불러왔습니다. 제출된 단계 " + data.records.length + " / 4.";
-    status.classList.remove("error");
-  } catch (error) {
-    if (attempt !== importAttempt) return;
-    status.classList.add("error");
-    status.textContent = "평가 불가 — " + error.message;
-  } finally {
-    if (attempt === importAttempt) event.target.value = "";
+  status.textContent = "파일을 확인하는 중입니다.";
+  event.target.value = "";
+  const errors = [];
+  const newEntries = new Map();
+  let duplicates = 0;
+  let lastId = "";
+  for (const [index, file] of files.entries()) {
+    try {
+      if (file.size === 0 || file.size > maxFile) throw new Error("비어 있거나 1 MiB를 초과한 파일입니다.");
+      const contents = await file.text();
+      if (attempt !== importAttempt) return;
+      let data;
+      try { data = JSON.parse(contents.replace(/^\uFEFF/, "")); }
+      catch { throw new Error("JSON 문법을 읽을 수 없습니다."); }
+      validateSubmission(data);
+      const signature = JSON.stringify(data);
+      if (newEntries.has(signature) || [...imported.values()].some(entry => entry.signature === signature)) {
+        duplicates++;
+        continue;
+      }
+      newEntries.set(signature, data);
+    } catch (error) {
+      if (attempt !== importAttempt) return;
+      errors.push((index + 1) + "번째 파일: " + error.message);
+    }
   }
+  for (const [signature, data] of newEntries) {
+    lastId = String(imported.size + 1);
+    imported.set(lastId, { data, signature });
+  }
+  const added = newEntries.size;
+  $("record-browser").hidden = imported.size === 0;
+  if (added) {
+    $("student-search").value = "";
+    selectImport(lastId);
+  }
+  const report = added + "개 기록을 불러왔습니다. 중복 " + duplicates + "개.";
+  status.classList.toggle("error", errors.length > 0);
+  status.textContent = errors.length ? report + " 평가 불가 — " + errors.join(" ") : report;
 };
+
 
 const tabs = [$("student-tab"), $("teacher-tab")];
 function selectTab(active) {

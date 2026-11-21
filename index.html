@@ -42,10 +42,18 @@
     </div>
     <div class="card no-print">
       <h2>학생 기록 불러오기</h2>
-      <label for="upload">학생 제출 JSON 파일 (최대 1 MiB)</label>
-      <input id="upload" type="file" accept=".json,application/json" aria-describedby="import-status">
+      <label for="upload">학생 제출 JSON 파일 (여러 개 선택 가능, 파일당 최대 1 MiB)</label>
+      <input id="upload" type="file" multiple accept=".json,application/json" aria-describedby="import-status">
       <p id="import-status" role="status">미제출 · 학생 기록 파일을 불러오면 평가를 시작할 수 있습니다.</p>
     </div>
+    <section id="record-browser" class="card no-print" hidden>
+      <h2>학생 기록 검색</h2>
+      <label for="student-search">학번 검색</label>
+      <input id="student-search" type="search" autocomplete="off" aria-describedby="search-status">
+      <p id="search-status" role="status"></p>
+      <label for="student-record">평가할 기록</label>
+      <select id="student-record"></select>
+    </section>
     <div id="assessment"></div>
   </section>
 </main>
