@@ -59,8 +59,61 @@ const statusLabels = {
 
 const $ = id => document.getElementById(id);
 const maxText = 12000;
-const maxFile = 1024 * 1024;
-const submissionVersion = 3;
+const maxFile = 2 * 1024 * 1024;
+const submissionVersion = 4;
+const frameworkStages = [
+  { ...stages[0], name: "AI 활용 전 · 독립적 사고와 학습계획", fields: {
+    understanding: "과제의 핵심 문제 이해", ...stages[0].fields,
+    aiPlan: "AI 활용 목적과 예상 범위 (사용하지 않을 계획이면 그 이유)"
+  }},
+  { ...stages[1], name: "AI 활용 중 · 비판적 검증과 사고 재구성", fields: {
+    aiUsed: "외부 생성형 AI 사용 여부", aiPrompt: "AI에 입력한 질문 또는 요청",
+    aiResponse: "외부 AI가 제시한 응답의 핵심 내용",
+    accepted: "AI 응답에서 수용한 내용", rejected: "AI 응답에서 수용하지 않은 내용",
+    verification: "정확성과 근거를 확인한 방법 및 결과",
+    ...stages[1].fields, additionalThought: "최초 사고에 덧붙일 의견 (선택)"
+  }},
+  { ...stages[2], name: "AI 활용 중 · 사전 작성 모범 답변 비교" },
+  { ...stages[3], name: "AI 활용 후 · 독립 수행과 자기성찰", fields: {
+    finalWork: "최종 과제 결과물 또는 요약", answer: "새로운 상황에 대한 독립 수행 답안",
+    concepts: "독립 수행 과정에서 활용한 핵심 개념",
+    learning: "새롭게 이해한 내용 (AI를 사용하지 않았다면 학습 활동에서 이해한 내용)",
+    withoutAi: "AI 도움 없이 해결할 수 있었던 부분", furtherLearning: "추가 학습이 필요한 부분"
+  }}
+];
+const externalAnswers = ["aiPrompt", "aiResponse", "accepted", "rejected"];
+
+function recordStages(version) {
+  return version === submissionVersion ? frameworkStages : stages;
+}
+
+function stageEntries(index, version, aiUsed) {
+  return Object.entries(recordStages(version)[index].fields)
+    .filter(([key]) => aiUsed !== "no" || !externalAnswers.includes(key));
+}
+
+const levelNames = ["미흡", "보통", "양호", "우수"];
+const integratedRubric = [
+  { id: "R", name: "결과 평가", max: 30, ranges: [[0,17],[18,21],[22,26],[27,30]], evidence: [3], keys: ["finalWork"], levels: [
+    "핵심 개념의 이해가 부족하고 주요 내용에 오류가 있습니다. 주장과 근거의 연결이 미흡하며 과제의 요구사항을 충분히 충족하지 못합니다.",
+    "주요 내용은 포함하였으나 개념이나 근거에 일부 오류가 있습니다. 논리적 연결이 부족하거나 과제의 일부 요구사항을 충족하지 못합니다.",
+    "핵심 개념이 대체로 정확하고 논리적 구조가 적절합니다. 일부 보완할 부분이 있으나 과제의 주요 요구사항을 충족합니다.",
+    "핵심 개념과 정보가 정확하며, 주장과 근거가 논리적으로 연결됩니다. 과제의 모든 요구사항을 충족하고 결과물의 완성도가 높습니다."
+  ]},
+  { id: "P", name: "과정 평가", max: 30, ranges: [[0,17],[18,21],[22,26],[27,30]], evidence: [0,1,2], levels: [
+    "독립적인 최초 사고나 AI 활용 기록이 부족합니다. AI 응답을 충분한 검토 없이 수용하거나 수정·판단의 근거를 제시하지 못합니다.",
+    "최초 사고와 AI 활용 기록은 있으나 활용 목적이 불명확하거나 검증이 제한적입니다. 수정 활동은 이루어졌지만 판단 근거가 충분하지 않습니다.",
+    "최초 사고와 AI 활용 계획이 제시됩니다. AI 응답에 대한 검증과 수정이 이루어졌으며, 주요 판단의 근거가 대체로 타당합니다.",
+    "AI 활용 이전에 독립적인 사고와 계획을 수립합니다. AI 활용 목적이 명확하고, 응답의 정확성과 근거를 다각도로 검증하며, 자신의 판단에 따라 내용을 수정·재구성하고 그 이유를 구체적으로 설명합니다."
+  ]},
+  { id: "I", name: "독립 수행 평가", max: 40, ranges: [[0,23],[24,29],[30,35],[36,40]], evidence: [3], keys: ["answer", "concepts", "withoutAi", "furtherLearning"], levels: [
+    "핵심 개념에 대한 이해가 부족하고 새로운 상황에 적절히 적용하지 못합니다. 문제해결 과정이 불완전하거나 결론을 뒷받침하는 근거가 부족합니다.",
+    "기본 개념을 이해하고 있으나 새로운 상황에 적용하는 과정에서 일부 오류가 발생합니다. 문제해결 과정이나 근거 제시가 제한적입니다.",
+    "핵심 개념을 대체로 정확히 이해하고 새로운 상황에 적용합니다. 문제해결 과정이 적절하며 일부 보완할 부분이 있으나 결론과 근거가 타당합니다.",
+    "AI의 도움 없이 핵심 개념을 정확히 설명하고 새로운 상황에 적절하게 적용합니다. 문제해결 전략이 타당하고, 해결 과정과 결론을 충분한 근거로 논증합니다."
+  ]}
+];
+
 const imported = new Map();
 let selectedImport = "";
 let importAttempt = 0;
@@ -90,14 +143,16 @@ function formatDate(iso) {
   return new Date(iso).toLocaleString("ko-KR");
 }
 
-function recordDetails(parent, records) {
+function recordDetails(parent, records, version, indexes = null, keys = null) {
   records.forEach(({ submittedAt, answers }, index) => {
+    if (indexes && !indexes.includes(index)) return;
     const section = add(parent, "details");
     section.open = true;
-    add(section, "summary", stages[index].name + " · " + formatDate(submittedAt));
-    for (const [key, label] of Object.entries(stages[index].fields)) {
+    add(section, "summary", recordStages(version)[index].name + " · " + formatDate(submittedAt));
+    for (const [key, label] of Object.entries(recordStages(version)[index].fields)) {
+      if (!Object.hasOwn(answers, key) || (keys && !keys.includes(key))) continue;
       add(section, "h3", label);
-      add(section, "p", answers[key], { class: "record" });
+      add(section, "p", key === "aiUsed" ? (answers[key] === "yes" ? "사용함" : "사용하지 않음") : answers[key], { class: "record" });
     }
   });
 }
@@ -117,14 +172,13 @@ function identityLabel(data) {
 }
 
 function researchExport(data) {
-  const { studentNumber, studentCode, evaluatedAt, records, type, ...content } = data;
+  const { studentNumber, studentCode, evaluatedAt, submissionTimestamps, records, type, ...content } = data;
   const identity = studentNumber ?? studentCode;
   const research = { ...content, type: type + "-research" };
   if (records) research.records = records.map(({ answers }) => ({ answers }));
   return JSON.parse(JSON.stringify(research, (key, value) => {
     if (identity && typeof value === "string" && (
-      Object.hasOwn(stages[0].fields, key) || Object.hasOwn(stages[1].fields, key) ||
-      Object.hasOwn(stages[2].fields, key) || Object.hasOwn(stages[3].fields, key) ||
+      frameworkStages.some(stage => Object.hasOwn(stage.fields, key)) ||
       ["note", "feedback", "strengths", "improvements", "nextSteps"].includes(key)
     )) return value.replaceAll(identity, "[식별 정보 삭제]");
     return value;
@@ -158,21 +212,30 @@ function download(data, filename, type = "application/json") {
 
 function submission() {
   const { problem, studentNumber, records } = session;
-  return { type: "think-before-ai-submission", schemaVersion: submissionVersion, assignmentId: problem.id,
+  return { type: "think-before-ai-submission", schemaVersion: session.flowVersion, assignmentId: problem.id,
     assignmentVersion: problem.version, problem, studentNumber, records };
 }
 
 function renderStudent(focus = false) {
   const problem = session.problem;
   const index = session.records.length;
-  const process = ["문제 확인", "사전 사고", "힌트 공개", "사고 수정", "모범 답변 비교", "독립 수행", "기록 내보내기"];
   const step = !session.started ? 0 : index === 0 ? 1 : index === 1 ? (session.writingRevision ? 3 : 2) : index + 2;
-  $("meter").value = step + Number(step === 6);
-  $("progress-label").textContent = step === 6 ? "7 / 7 단계 완료" : (step + 1) + " / 7 단계";
+  const modern = session.flowVersion === submissionVersion;
+  const screens = modern
+    ? ["문제 확인과 학습 시작", "AI 활용 전 · 독립적 사고와 학습계획", "AI 활용 중 · 사전 작성 힌트",
+      "AI 활용 중 · 검증과 사고 재구성", "AI 활용 중 · 사전 작성 모범 답변 비교",
+      "AI 활용 후 · 독립 수행과 자기성찰", "기록 내보내기"]
+    : ["문제 확인", "사전 사고", "힌트 공개", "사고 수정", "모범 답변 비교", "독립 수행", "기록 내보내기"];
+  const process = modern ? ["AI 활용 전", "AI 활용 중", "AI 활용 후"] : screens;
+  const current = modern ? (step <= 1 ? 0 : step <= 4 ? 1 : step === 5 ? 2 : 3) : (step === 6 ? 7 : step);
+  $("meter").max = process.length;
+  $("meter").value = current;
+  $("progress-label").textContent = current === process.length
+    ? process.length + " / " + process.length + " 단계 완료" : (current + 1) + " / " + process.length + " 단계";
   $("steps").replaceChildren();
   process.forEach((name, i) => {
-    const state = i < step || step === 6 ? "완료" : i === step ? "진행 중" : "대기";
-    add($("steps"), "li", name + " · " + state, i === step && step < 6 ? { "aria-current": "step" } : {});
+    const state = i < current ? "완료" : i === current ? "진행 중" : "대기";
+    add($("steps"), "li", name + " · " + state, i === current ? { "aria-current": "step" } : {});
   });
 
   const example = exampleProblems.find(item => item.id === problem.id && item.version === problem.version);
@@ -181,7 +244,7 @@ function renderStudent(focus = false) {
   const activity = $("activity");
   activity.replaceChildren();
   const card = add(activity, "article", undefined, { class: "card" });
-  const heading = add(card, "h2", process[step], { tabindex: "-1" });
+  const heading = add(card, "h2", screens[step], { tabindex: "-1" });
 
   if (step <= 4) {
     callout(card, problem.title + " · v" + problem.version, problem.problem);
@@ -192,6 +255,7 @@ function renderStudent(focus = false) {
   if (step === 0) {
     renderStudentStart(card, problem);
   } else if (step === 2) {
+    if (modern) add(card, "p", "아래 힌트는 교수자가 사전에 작성했습니다. 외부 생성형 AI의 응답은 다음 화면에 직접 기록하세요.");
     for (let i = 0; i < session.hintsSeen; i++) callout(card, "힌트 " + (i + 1), problem.hints[i]);
     const done = session.hintsSeen === problem.hints.length;
     add(card, "p", session.hintsSeen + " / " + problem.hints.length + "개 힌트 확인");
@@ -204,16 +268,17 @@ function renderStudent(focus = false) {
   } else if (step === 6) {
     add(card, "p", "학습 기록 제출을 완료했습니다. 파일을 내려받아 담당 교수자에게 전달하세요.");
     studentDownloads(card, false);
-    recordDetails(add(activity, "section", undefined, { class: "card" }), session.records);
+    recordDetails(add(activity, "section", undefined, { class: "card" }), session.records, session.flowVersion);
   } else {
     if (step === 1) callout(card, "사전 사고 입력 안내", problem.guidance);
     if (step === 3) {
+      if (modern) callout(card, "외부 AI 활용 및 검증 안내", problem.aiGuidance ?? "AI를 사용했다면 실제 질문과 응답을 기록하세요. 사용하지 않았다면 사용하지 않음을 선택하고 다른 자료나 방법으로 근거를 검증하세요.");
       problem.hints.forEach((hint, i) => callout(card, "힌트 " + (i + 1), hint));
       add(card, "p", "타당한 근거가 있다면 최초 판단을 유지할 수 있습니다.");
       if (problem.revisionQuestion) callout(card, "사고 수정 질문", problem.revisionQuestion);
     }
     if (step === 4) {
-      callout(card, "모범 답변", problem.model);
+      callout(card, modern ? "교수자가 사전 작성한 모범 답변" : "모범 답변", problem.model);
       if (problem.comparisonQuestion) callout(card, "모범 답변 비교 질문", problem.comparisonQuestion);
     }
     if (step === 5) {
@@ -224,7 +289,7 @@ function renderStudent(focus = false) {
     if (step === 3 || step === 4) {
       const prior = add(activity, "section", undefined, { class: "card" });
       add(prior, "h2", "제출한 내 기록");
-      recordDetails(prior, session.records);
+      recordDetails(prior, session.records, session.flowVersion);
     }
   }
   if (index > 0 && step < 6) studentDownloads(card, true);
@@ -270,20 +335,42 @@ function renderStudentStart(card, problem) {
 function renderStudentForm(card, index) {
   const form = add(card, "form");
   form.noValidate = true;
-  const entries = Object.entries(stages[index].fields);
-  for (const [key, label] of entries) field(form, key, label, { required: "" });
-  const inputs = [...form.querySelectorAll("input, textarea")];
+  const version = session.flowVersion;
+  const stage = recordStages(version)[index];
+  let used;
+  const aiFields = version === submissionVersion && index === 1 ? add(form, "div") : null;
+  if (aiFields) {
+    used = field(aiFields, "aiUsed", stage.fields.aiUsed, { required: "" }, "select");
+    for (const [value, label] of [["", "사용 여부를 선택하세요"], ["yes", "사용함"], ["no", "사용하지 않음"]]) {
+      add(used, "option", label, { value });
+    }
+  }
+  const external = aiFields ? add(aiFields, "div") : null;
+  for (const [key, label] of stageEntries(index, version)) {
+    if (key === "aiUsed") continue;
+    field(externalAnswers.includes(key) ? external : form, key, label);
+  }
+  const inputs = [...form.querySelectorAll("textarea, select")];
   for (const input of inputs) input.value = session.draft[input.name] ?? "";
+  function updateExternalFields() {
+    if (!external) return;
+    external.hidden = used.value !== "yes";
+    for (const input of external.querySelectorAll("textarea")) input.disabled = external.hidden;
+  }
+  updateExternalFields();
   form.oninput = () => {
+    updateExternalFields();
     session.draft = Object.fromEntries(inputs.map(input => [input.name, input.value]));
     saveStudent();
   };
-  add(form, "p", "모든 입력란이 필수입니다. 제출한 기록은 이후 단계에서 수정할 수 없습니다.");
+  add(form, "p", "선택 항목을 제외한 현재 화면의 모든 항목을 작성하세요. 제출한 원본은 수정할 수 없습니다.");
   const error = add(form, "p", "", { class: "error", role: "alert", id: "student-error" });
-  add(form, "button", stages[index].button, { type: "submit" });
+  add(form, "button", stage.button, { type: "submit" });
   form.onsubmit = event => {
     event.preventDefault();
     if (session.records.length !== index) return;
+    const entries = stageEntries(index, version, used?.value)
+      .filter(([key]) => key !== "additionalThought" || form.elements[key].value.trim());
     const answers = Object.fromEntries(entries.map(([key]) => [key, form.elements[key].value]));
     const missing = entries.find(([key]) => !validAnswer(answers[key]));
     if (missing) {
@@ -322,11 +409,11 @@ function validDate(value) {
 function validateSubmission(data) {
   const version = data?.schemaVersion;
   const legacy = version === 1;
-  const snapshot = version === submissionVersion;
+  const snapshot = version >= 3;
   const identityKey = legacy ? "studentCode" : "studentNumber";
   const keys = ["type", "schemaVersion", "assignmentId", identityKey, "records"];
   if (snapshot) keys.push("assignmentVersion", "problem");
-  if (![1, 2, submissionVersion].includes(version) || !exactObject(data, keys) ||
+  if (![1, 2, 3, submissionVersion].includes(version) || !exactObject(data, keys) ||
       data.type !== "think-before-ai-submission" || typeof data.assignmentId !== "string" ||
       !Array.isArray(data.records) || data.records.length < 1 || data.records.length > stages.length) {
     throw new Error("지원하는 학생 제출 JSON 형식이 아닙니다.");
@@ -343,9 +430,12 @@ function validateSubmission(data) {
     throw new Error("제출 기록의 학번 형식이 올바르지 않습니다.");
   }
   data.records.forEach((record, index) => {
-    const keys = Object.keys(stages[index].fields);
+    const aiUsed = record?.answers?.aiUsed;
+    const keys = stageEntries(index, version, aiUsed).map(([key]) => key)
+      .filter(key => key !== "additionalThought" || Object.hasOwn(record?.answers ?? {}, key));
     if (!exactObject(record, ["submittedAt", "answers"]) || !validDate(record.submittedAt) ||
-        !exactObject(record.answers, keys) || !keys.every(key => validAnswer(record.answers[key]))) {
+        !exactObject(record.answers, keys) || !keys.every(key => validAnswer(record.answers[key])) ||
+        (version === submissionVersion && index === 1 && !["yes", "no"].includes(aiUsed))) {
       throw new Error((index + 1) + "단계 기록의 내용 또는 구조가 올바르지 않습니다.");
     }
   });
@@ -378,9 +468,40 @@ function evaluationCsv(result) {
   return "\uFEFF" + rows.map(row => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
 
+function renderLegacyAssessment(parent, problem, data, saved) {
+  if (!saved) return;
+  const archive = add(parent, "details");
+  add(archive, "summary", "이전 4영역 평가 기록");
+  add(archive, "p", "이전 방식으로 저장된 평가입니다. 점수는 새 3영역 총점에 합산하지 않습니다.");
+  const criteria = problem.rubric.map(({ id, name, max, levels }) => {
+    const entry = saved.criteria?.[id];
+    const level = Number(entry?.level) || null;
+    const score = level === null ? null : max * level / 4;
+    const status = level === null ? entry?.level || "pending" : "scored";
+    const note = entry?.note ?? "";
+    add(archive, "h3", name + " · " + (score === null ? statusLabels[status] : scoreText(score) + " / " + max + "점"));
+    if (note) add(archive, "p", note, { class: "record" });
+    return { id, name, max, level, score, status, note, description: level === null ? "" : levels[level - 1] };
+  });
+  const subtotal = criteria.reduce((sum, item) => sum + (item.score ?? 0), 0);
+  const finalized = criteria.every(item => item.status === "scored");
+  add(archive, "p", (finalized ? "이전 총점 " : "이전 평가 소계 ") + scoreText(subtotal) + "점");
+  const feedback = saved.feedback ?? {};
+  for (const [key, label] of [
+    ["strengths", "강점"], ["improvements", "보완점"], ["nextSteps", "다음 학습 제안"], ["feedback", "종합 평가 의견"]
+  ]) if (feedback[key]) callout(archive, label, feedback[key]);
+  add(archive, "button", "이전 평가 JSON 다운로드", { type: "button", class: "secondary" }).onclick = () => download({
+    type: "think-before-ai-evaluation", schemaVersion: 4, rubricVersion: "legacy-four-domain",
+    assignmentId: data.assignmentId, assignmentVersion: data.assignmentVersion ?? null, assignmentTitle: problem.title,
+    ...(data.studentNumber === undefined ? { studentCode: data.studentCode } : { studentNumber: data.studentNumber }),
+    criteria, subtotal, finalized, total: finalized ? subtotal : null, ...feedback
+  }, "think-before-ai-evaluation-legacy.json");
+}
+
+
 function renderAssessment(data, root) {
   const problem = data.problem ?? defaultProblem;
-  const areaRubric = problem.rubric.map((area, index) => ({ ...area, evidence: rubric[index].evidence }));
+  const areaRubric = integratedRubric;
   const storageId = JSON.stringify([data.assignmentId, data.assignmentVersion ?? "legacy", data.studentNumber ?? data.studentCode,
     ...data.records.map(record => record.submittedAt)]);
   const saved = readLocal(evaluationKey, {})[storageId];
@@ -388,6 +509,7 @@ function renderAssessment(data, root) {
   add(overview, "h2", problem.title + " · " + problem.id + " v" + problem.version + " · " + identityLabel(data));
   const all = add(overview, "details");
   add(all, "summary", "전체 문제와 제출 기록");
+  all.open = true;
   callout(all, "최초 문제", problem.problem);
   callout(all, "학습목표", problem.objectives);
   problem.hints.forEach((hint, i) => callout(all, "힌트 " + (i + 1), hint));
@@ -395,19 +517,21 @@ function renderAssessment(data, root) {
   callout(all, "모범 답변", problem.model);
   if (problem.comparisonQuestion) callout(all, "모범 답변 비교 질문", problem.comparisonQuestion);
   callout(all, "독립 수행 문제 (힌트 미제공)", problem.independent);
-  recordDetails(all, data.records);
+  recordDetails(all, data.records, data.schemaVersion);
+  if (data.schemaVersion < submissionVersion) add(overview, "p", "이전 제출 형식입니다. 당시 수집하지 않은 항목은 빈 증거로 유지합니다.");
+  renderLegacyAssessment(overview, problem, data, readLocal(legacyEvaluationKey, {})[storageId]);
   const researchRecords = add(overview, "button", "연구·발표용 학생 기록 JSON 다운로드", { type: "button", class: "secondary" });
   researchRecords.onclick = () => download(researchExport(data), "think-before-ai-submission-research.json");
 
   const form = add(root, "form", undefined, { class: "card no-print" });
-  add(form, "h2", "4수준 분석적 루브릭");
-  add(form, "p", "영역 점수는 배점 × 선택 수준 ÷ 4입니다. 교수자가 원문을 읽고 수준을 정합니다. 글자 수, 입력 시간, 특정 키워드나 AI 활용량으로 자동 평가하지 않습니다.");
+  add(form, "h2", "3영역·4수준 통합평가");
+  add(form, "p", "교수자가 영역별 수준을 정한 뒤 해당 범위에서 정수 점수를 입력합니다. 외부 AI를 사용하지 않은 경우에도 근거 검증과 판단 과정으로 평가할 수 있습니다. 점수는 자동 판정하지 않습니다.");
   add(form, "p", "이 평가 영역과 배점은 프로젝트용 초안이며 타당화된 척도가 아닙니다.");
   const guide = add(form, "ul", undefined, { class: "status-guide" });
   add(guide, "li", "미제출 — 연결된 학생 기록 중 일부 또는 전부가 없어 채점을 보류합니다.");
   add(guide, "li", "평가 불가 — 기록은 있으나 판단에 쓸 수 없는 경우 교수자가 선택하고 메모에 이유를 남길 수 있습니다.");
   add(guide, "li", "미평가 — 채점에 필요한 기록이 있으나 교수자가 아직 수준을 선택하지 않았습니다.");
-  add(form, "p", "세 상태는 점수 합계에서 제외합니다. 네 영역의 수준을 모두 선택하면 최종 총점이 확정됩니다. 미완료 상태도 평가 기록으로 내보낼 수 있습니다.");
+  add(form, "p", "세 상태는 점수 합계에서 제외합니다. 세 영역의 수준과 유효한 점수가 모두 입력되면 최종 총점이 확정됩니다. 범위를 벗어난 점수가 있는 동안 저장 및 출력이 제한됩니다.");
 
   const controls = areaRubric.map(criterion => {
     const group = add(form, "fieldset", undefined, { class: "criterion" });
@@ -416,22 +540,17 @@ function renderAssessment(data, root) {
     const scale = add(pair, "section");
     add(scale, "h3", "수준별 기술문");
     const list = add(scale, "ol", undefined, { class: "rubric", reversed: "", start: "4" });
-    for (const description of criterion.levels.slice().reverse()) add(list, "li", description);
+    for (let i = 3; i >= 0; i--) {
+      add(list, "li", levelNames[i] + " (" + criterion.ranges[i].join("~") + "점) · " + criterion.levels[i]);
+    }
 
     const source = add(pair, "section", undefined, { class: "criterion-evidence" });
     add(source, "h3", "관련 학생 기록");
-    const missing = criterion.evidence.some(([stage]) => !data.records[stage]);
-    for (const [stage, key, label] of criterion.evidence) {
-      const record = data.records[stage];
-      const detail = add(source, "details");
-      detail.open = true;
-      add(detail, "summary", label + (record ? "" : " · 미제출"));
-      if (record) {
-        add(detail, "p", formatDate(record.submittedAt), { class: "evidence-time" });
-        add(detail, "p", record.answers[key], { class: "record" });
-      }
-    }
-    if (criterion.id === "D") {
+    const missing = criterion.evidence.some(index => !data.records[index]) ||
+      (criterion.id === "R" && !data.records[3]?.answers.finalWork);
+    if (missing) add(source, "p", "이 영역에 필요한 증거가 제출되지 않았습니다.");
+    recordDetails(source, data.records, data.schemaVersion, criterion.evidence, criterion.keys);
+    if (criterion.id === "I") {
       callout(source, "독립 수행 문제", problem.independent);
       callout(source, "독립 수행 채점 기준", problem.independentCriteria);
     }
@@ -448,16 +567,33 @@ function renderAssessment(data, root) {
       select.disabled = true;
     } else {
       add(select, "option", statusLabels.unavailable, { value: "unavailable" });
-      criterion.levels.forEach((_, i) => add(select, "option", "수준 " + (i + 1) + " · " + scoreText(criterion.max * (i + 1) / 4) + "점", { value: i + 1 }));
+      criterion.ranges.forEach((range, i) => add(select, "option", "수준 " + (i + 1) + " · " + levelNames[i] + " (" + range.join("~") + "점)", { value: i + 1 }));
     }
+    const points = field(selection, "points-" + criterion.id, criterion.name + " 세부 점수", {
+      type: "number", step: 1, "aria-describedby": scoreId, disabled: ""
+    }, "input");
     const score = add(selection, "p", "", { id: scoreId, class: "criterion-score" });
+    function setRange(reset) {
+      const range = criterion.ranges[Number(select.value) - 1];
+      points.disabled = !range;
+      if (!range) {
+        points.value = "";
+        return;
+      }
+      const [min, max] = range;
+      points.min = min;
+      points.max = max;
+      if (reset) points.value = max;
+    }
     const note = field(add(grading, "div"), "note-" + criterion.id, criterion.name + " 평가 근거 메모");
     const prior = saved?.criteria?.[criterion.id];
     if (prior) {
       if ([...select.options].some(option => option.value === prior.level)) select.value = prior.level;
       note.value = prior.note ?? "";
+      points.value = prior.points ?? "";
     }
-    return { select, score, note };
+    setRange(false);
+    return { select, score, note, points, setRange };
   });
 
   const total = add(form, "p", "", { class: "assessment-total", role: "status" });
@@ -477,19 +613,23 @@ function renderAssessment(data, root) {
   const print = add(actions, "button", "인쇄용 화면 열기", { type: "button" });
 
   function evaluate() {
-    const criteria = areaRubric.map(({ id, name, max, levels }, index) => {
-      const { select, note } = controls[index];
+    const criteria = areaRubric.map(({ id, name, max, levels, ranges }, index) => {
+      const { select, note, points } = controls[index];
       const level = Number(select.value) || null;
+      const range = level === null ? null : ranges[level - 1];
+      const numeric = points.valueAsNumber;
+      const valid = range && Number.isInteger(numeric) && numeric >= range[0] && numeric <= range[1];
       return {
-        id, name, max, status: level === null ? select.value : "scored", level,
+        id, name, max, status: level === null ? select.value : valid ? "scored" : "invalid", level, range,
         description: level === null ? "" : levels[level - 1],
-        score: level === null ? null : max * level / 4, note: note.value
+        score: valid ? numeric : null, note: note.value
       };
     });
     const subtotal = criteria.reduce((sum, criterion) => sum + (criterion.score ?? 0), 0);
     const finalized = criteria.every(criterion => criterion.status === "scored");
     return {
-      type: "think-before-ai-evaluation", schemaVersion: 4, assignmentId: data.assignmentId,
+      type: "think-before-ai-evaluation", schemaVersion: 5, rubricVersion: "RPI-1", submissionSchemaVersion: data.schemaVersion, assignmentId: data.assignmentId,
+      submissionTimestamps: data.records.map(record => record.submittedAt),
       assignmentVersion: data.assignmentVersion ?? null, assignmentTitle: problem.title,
       ...(data.studentNumber === undefined ? { studentCode: data.studentCode } : { studentNumber: data.studentNumber }), evaluatedAt: new Date().toISOString(),
       criteria, subtotal, finalized, total: finalized ? subtotal : null,
@@ -498,31 +638,48 @@ function renderAssessment(data, root) {
   }
   function updateScore() {
     const result = evaluate();
-    result.criteria.forEach(({ status, score, max }, index) => {
-      controls[index].score.textContent = score === null
-        ? statusLabels[status] + " · 점수 없음"
-        : "영역 점수 " + scoreText(score) + " / " + scoreText(max) + "점";
+    const hasInvalid = result.criteria.some(criterion => criterion.status === "invalid");
+    result.criteria.forEach(({ status, score, max, level, range, description }, index) => {
+      const { points, score: summary } = controls[index];
+      if (status === "invalid") points.setAttribute("aria-invalid", "true");
+      else points.removeAttribute("aria-invalid");
+      summary.textContent = level === null ? statusLabels[status] + " · 점수 없음" :
+        (score === null ? "정수 점수를 확인하세요. 허용 범위 " : "영역 점수 " + scoreText(score) + " / " + scoreText(max) + "점 · 범위 ") +
+        range.join("~") + "점 · " + description;
     });
+    json.disabled = research.disabled = csv.disabled = print.disabled = hasInvalid;
     const scored = result.criteria.filter(criterion => criterion.status === "scored").length;
     total.textContent = result.finalized
       ? "최종 총점 " + scoreText(result.total) + " / 100.00점"
-      : scored + " / 4개 영역 평가 완료 · 평가한 영역 합계 " + scoreText(result.subtotal) + "점 · 최종 총점 미확정";
+      : scored + " / 3개 영역 평가 완료 · 평가한 영역 합계 " + scoreText(result.subtotal) + "점 · 최종 총점 미확정";
+    return !hasInvalid;
   }
   const filename = "think-before-ai-evaluation";
   form.onsubmit = event => event.preventDefault();
   function saveAssessment() {
+    if (!updateScore()) {
+      storageStatus.textContent = "범위를 벗어난 점수가 있어 저장하지 않았습니다.";
+      return;
+    }
     const previous = readLocal(evaluationKey, {});
     previous[storageId] = {
       criteria: Object.fromEntries(areaRubric.map((area, index) => [area.id, {
-        level: controls[index].select.value, note: controls[index].note.value
+        level: controls[index].select.value, points: controls[index].points.value, note: controls[index].note.value
       }])),
       feedback: Object.fromEntries(feedbackFields.map(input => [input.id, input.value]))
     };
     storageStatus.textContent = writeLocal(evaluationKey, previous)
       ? "평가를 이 브라우저에 저장했습니다." : "로컬 저장에 실패했습니다. 평가 JSON을 내려받으세요.";
   }
-  form.oninput = saveAssessment;
-  form.onchange = () => { updateScore(); saveAssessment(); };
+  // A level change resets that area's points before the form saves.
+  const levelControls = new Map(controls.map(control => [control.select, control]));
+  form.oninput = event => {
+    if (!levelControls.has(event.target)) saveAssessment();
+  };
+  form.onchange = event => {
+    levelControls.get(event.target)?.setRange(true);
+    saveAssessment();
+  };
   json.onclick = () => download(evaluate(), filename + ".json");
   research.onclick = () => download(researchExport(evaluate()), filename + "-research.json");
   csv.onclick = () => download(evaluationCsv(evaluate()), filename + ".csv", "text/csv;charset=utf-8");
@@ -626,7 +783,7 @@ function initTeacherAssessment() {
     let lastId = "";
     for (const [index, file] of files.entries()) {
       try {
-        if (file.size === 0 || file.size > maxFile) throw new Error("비어 있거나 1 MiB를 초과한 파일입니다.");
+        if (file.size === 0 || file.size > maxFile) throw new Error("비어 있거나 2 MiB를 초과한 파일입니다.");
         const contents = await file.text();
         if (attempt !== importAttempt) return;
         let data;

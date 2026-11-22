@@ -3,7 +3,8 @@
 const storagePrefix = "think-before-ai:";
 const draftKey = "student-v3";
 const problemKey = "problems-v1";
-const evaluationKey = "evaluations-v1";
+const evaluationKey = "evaluations-v2";
+const legacyEvaluationKey = "evaluations-v1";
 const maxProblemFile = 256 * 1024;
 
 const defaultProblem = {
@@ -25,6 +26,7 @@ const exampleProblems = exampleProblemContent.map(content => ({
   ...content, studentNumber: defaultProblem.studentNumber, rubric: defaultProblem.rubric
 }));
 const optionalProblemFields = [
+  ["aiGuidance", "AI 활용 목적 및 검증 활동 안내 (선택)", true],
   ["revisionQuestion", "사고 수정 질문 (선택)", true],
   ["comparisonQuestion", "모범 답변 비교 질문 (선택)", true]
 ];
@@ -93,7 +95,7 @@ function validateProblem(data) {
 }
 
 function draftState() {
-  return { problem: exampleProblems[0], studentNumber: "", records: [], draft: {}, started: false, hintsSeen: 0, writingRevision: false };
+  return { flowVersion: submissionVersion, problem: exampleProblems[0], studentNumber: "", records: [], draft: {}, started: false, hintsSeen: 0, writingRevision: false };
 }
 
 let session;
@@ -136,10 +138,10 @@ function initStudentPage() {
     const saved = readLocal(draftKey, null);
     if (saved) {
       validateProblem(saved.problem);
-      if (saved.records.length) validateSubmission({ type: "think-before-ai-submission", schemaVersion: 3,
+      if (saved.records.length) validateSubmission({ type: "think-before-ai-submission", schemaVersion: saved.flowVersion ?? 3,
         assignmentId: saved.problem.id, assignmentVersion: saved.problem.version, problem: saved.problem,
         studentNumber: saved.studentNumber, records: saved.records });
-      session = { ...draftState(), ...saved };
+      session = { ...draftState(), ...saved, flowVersion: saved.flowVersion ?? (saved.records.length ? 3 : submissionVersion) };
     }
   } catch { /* A damaged local draft must not block starting a new session. */ }
 
@@ -213,26 +215,6 @@ function initTeacherPage() {
     for (const id of ["duplicate-problem", "delete-problem", "preview-problem", "export-problem"]) $(id).disabled = !selected;
   }
 
-  function renderRubricEditor() {
-    const content = $("rubric-editor");
-    content.replaceChildren();
-    editorRubric.forEach((area, index) => {
-      const details = add(content, "details");
-      add(details, "summary", "평가 영역 " + area.id);
-      field(details, "area-name-" + index, "영역명", { type: "text", maxlength: 100, required: "" }, "input").value = area.name;
-      field(details, "area-max-" + index, "배점", { type: "number", min: 1, max: 100, step: 1, required: "" }, "input").value = area.max;
-      area.levels.forEach((level, i) => {
-        field(details, "area-level-" + index + "-" + i, "수준 " + (i + 1) + " 기술문", { maxlength: 1000, required: "" }).value = level;
-      });
-    });
-    updateWeight();
-  }
-
-  function updateWeight() {
-    const total = editorRubric.reduce((sum, _, index) => sum + Number($("area-max-" + index).value), 0);
-    $("weight-total").textContent = "배점 합계 " + total + " / 100점";
-  }
-
   function renderHintEditor(hints) {
     const content = $("hint-editor");
     content.replaceChildren();
@@ -259,7 +241,6 @@ function initTeacherPage() {
     $("hint-count").value = problem.hints.length;
     renderHintEditor(problem.hints);
     editorRubric = structuredClone(problem.rubric);
-    renderRubricEditor();
     renderProblemList();
     $("problem-preview").hidden = true;
   }
@@ -275,9 +256,7 @@ function initTeacherPage() {
     data.hints = [...$("hint-editor").querySelectorAll("textarea")].map(input => input.value.trim());
     data.studentNumber = { pattern: $("number-pattern").value, maxLength: Number($("number-length").value),
       inputMode: $("number-keyboard").value, help: $("number-instructions").value.trim() };
-    data.rubric = editorRubric.map(({ id }, index) => ({ id, name: $("area-name-" + index).value.trim(),
-      max: Number($("area-max-" + index).value),
-      levels: Array.from({ length: 4 }, (_, i) => $("area-level-" + index + "-" + i).value.trim()) }));
+    data.rubric = editorRubric;
     return data;
   }
 
@@ -338,12 +317,6 @@ function initTeacherPage() {
     renderHintEditor(Array.from({ length: count }, (_, index) => hints[index] ?? ""));
   };
 
-  $("rubric-editor").oninput = updateWeight;
-  $("restore-rubric").onclick = () => {
-    editorRubric = structuredClone(defaultProblem.rubric);
-    renderRubricEditor();
-  };
-
   $("problem-form").noValidate = true;
   $("problem-form").onsubmit = event => {
     event.preventDefault();
@@ -369,10 +342,10 @@ function initTeacherPage() {
       ["교과목", problem.subject], ["학습목표", problem.objectives], ["학습 문제", problem.problem],
       ["사전 사고 입력 안내", problem.guidance], ...problem.hints.map((hint, i) => ["힌트 " + (i + 1), hint]),
       ["모범 답변", problem.model], [problem.independentTitle, problem.independent], ["독립 수행 채점 기준", problem.independentCriteria],
-      ["사고 수정 질문", problem.revisionQuestion], ["모범 답변 비교 질문", problem.comparisonQuestion]
+      ["AI 활용 및 검증 안내", problem.aiGuidance], ["사고 수정 질문", problem.revisionQuestion], ["모범 답변 비교 질문", problem.comparisonQuestion]
     ]) { if (value) callout(preview, label, value); }
     const areas = add(preview, "ul");
-    problem.rubric.forEach(area => {
+    integratedRubric.forEach(area => {
       const item = add(areas, "li");
       add(item, "h3", area.name + " · " + area.max + "점");
       const levels = add(item, "ol");
@@ -394,7 +367,9 @@ function initTeacherPage() {
 
   $("clear-evaluations").onclick = () => {
     if (!window.confirm("이 브라우저에 저장된 교수자 평가와 현재 불러온 학생 기록을 지울까요?")) return;
-    if (!writeLocal(evaluationKey, null)) {
+    const cleared = writeLocal(evaluationKey, null);
+    const legacyCleared = writeLocal(legacyEvaluationKey, null);
+    if (!cleared || !legacyCleared) {
       $("import-status").textContent = "평가를 삭제하지 못했습니다.";
       return;
     }
